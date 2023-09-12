@@ -1,0 +1,8 @@
+{
+    "compilerOptions": {
+      "useOptionals": true,
+      "outputEncodeMethods": true,
+      "outputJsonMethods": true,
+      "useDate": true
+    }
+  }

@@ -1,7 +1,6 @@
 /* eslint-disable */
 import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
 import { Observable } from "rxjs";
-// import { Date } from "./google/protobuf/timestamp.pb";
 
 export const protobufPackage = "auth";
 
@@ -12,8 +11,8 @@ export interface User {
   estado: boolean;
   password: string;
   role: string;
-  createdAt: Date | undefined;
-  updatedAt: Date | undefined;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface LoginRequest {
@@ -27,7 +26,7 @@ export interface LoginResponse {
   usuario?: User | undefined;
   token?: string | undefined;
   refreshToken?: string | undefined;
-  error?: string[];
+  error?: string | undefined;
 }
 
 export interface RegisterRequest {
@@ -43,7 +42,7 @@ export interface RegisterResponse {
   usuario?: User | undefined;
   token?: string | undefined;
   refreshToken?: string | undefined;
-  error?: string[];
+  error?: string | undefined;
 }
 
 export interface ForgotPasswordRequest {
@@ -81,6 +80,16 @@ export interface RefreshTokenResponse {
   refreshToken: string;
 }
 
+export interface ValidateTokenRequest {
+  token: string;
+}
+
+export interface ValidateTokenResponse {
+  status: number;
+  error: string[];
+  userId: number;
+}
+
 export const AUTH_PACKAGE_NAME = "auth";
 
 export interface AuthServiceClient {
@@ -88,7 +97,7 @@ export interface AuthServiceClient {
 
   register(request: RegisterRequest): Observable<RegisterResponse>;
 
-  /** rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse) {} */
+  validateToken(request: ValidateTokenRequest): Observable<ValidateTokenResponse>;
 
   forgotPassword(request: ForgotPasswordRequest): Observable<ForgotPasswordResponse>;
 
@@ -102,7 +111,9 @@ export interface AuthServiceController {
 
   register(request: RegisterRequest): Promise<RegisterResponse> | Observable<RegisterResponse> | RegisterResponse;
 
-  /** rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse) {} */
+  validateToken(
+    request: ValidateTokenRequest,
+  ): Promise<ValidateTokenResponse> | Observable<ValidateTokenResponse> | ValidateTokenResponse;
 
   forgotPassword(
     request: ForgotPasswordRequest,
@@ -119,7 +130,14 @@ export interface AuthServiceController {
 
 export function AuthServiceControllerMethods() {
   return function (constructor: Function) {
-    const grpcMethods: string[] = ["login", "register", "forgotPassword", "resetPassword", "refreshToken"];
+    const grpcMethods: string[] = [
+      "login",
+      "register",
+      "validateToken",
+      "forgotPassword",
+      "resetPassword",
+      "refreshToken",
+    ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
       GrpcMethod("AuthService", method)(constructor.prototype[method], method, descriptor);

@@ -5,7 +5,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
-import { JwtStrategy, LocalStrategy /* SupabaseStrategy*/ } from './strategies';
+
 import { User } from './entities/user.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
 

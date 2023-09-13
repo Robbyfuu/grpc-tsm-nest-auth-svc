@@ -12,8 +12,13 @@ import * as bcrypt from 'bcrypt';
 import { User } from './entities/user.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { TokenExpiredError, JwtPayload } from 'jsonwebtoken';
-import { LoginRequestDto, RegisterRequestDto } from './dto';
-import { LoginResponse, RegisterResponse } from './auth.pb';
+import { LoginRequestDto, RegisterRequestDto, ValidateRequestDto } from './dto';
+import {
+  LoginResponse,
+  RefreshTokenResponse,
+  RegisterResponse,
+  ValidateTokenResponse,
+} from './auth.pb';
 
 @Injectable()
 export class AuthService {
@@ -26,14 +31,6 @@ export class AuthService {
     private readonly refreshTokenModel: Repository<RefreshToken>,
   ) {}
 
-  async validateUser(id: number): Promise<User> {
-    const user = await this.userModel.findOneBy({ id });
-
-    if (!user.estado) {
-      throw new UnauthorizedException(`User is inactive, talk with an admin`);
-    }
-    return user;
-  }
   async validateUserWithPassword(email: string, pass: string): Promise<User> {
     const user = await this.userModel.findOne({ where: { email } });
     if (user) {
@@ -124,7 +121,9 @@ export class AuthService {
     return user;
   }
 
-  async createAccessTokenFromRefreshToken(refresh: string) {
+  async createAccessTokenFromRefreshToken(
+    refresh: string,
+  ): Promise<RefreshTokenResponse> {
     const { user } = await this.resolveRefreshToken(refresh);
 
     const token = await this.generateAccessToken(user);
@@ -134,7 +133,13 @@ export class AuthService {
       12 * 60 * 60 * 1000,
     );
 
-    return { user, token, refreshToken };
+    return {
+      ok: true,
+      status: HttpStatus.OK,
+      usuario: user,
+      token,
+      refreshToken,
+    };
   }
 
   async register(
@@ -150,7 +155,7 @@ export class AuthService {
       return {
         ok: false,
         status: HttpStatus.CONFLICT,
-        error: ['User already exists'],
+        error: 'User already exists',
       };
     }
     try {
@@ -179,27 +184,27 @@ export class AuthService {
       return {
         ok: false,
         status: HttpStatus.INTERNAL_SERVER_ERROR,
-        error: ['Internal server error'],
+        error: 'Internal server error',
       };
     }
   }
   async login(loginInput: LoginRequestDto): Promise<LoginResponse> {
-    console.log({ loginInput })
+    console.log({ loginInput });
     const { email, password } = loginInput;
     const user = await this.userModel.findOne({ where: { email } });
     if (!user) {
       return {
         ok: false,
         status: HttpStatus.UNPROCESSABLE_ENTITY,
-        error: ['Invalid credentials'],
-      }
+        error: 'Invalid credentials',
+      };
     }
     if (!bcrypt.compareSync(password, user.password)) {
       return {
         ok: false,
         status: HttpStatus.UNPROCESSABLE_ENTITY,
-        error: ['Invalid credentials'],
-      }
+        error: 'Invalid credentials',
+      };
     }
     return {
       ok: true,
@@ -214,5 +219,39 @@ export class AuthService {
     return {
       access_token: this.jwtService.sign(payload),
     };
+  }
+
+  async validateToken({
+    token,
+  }: ValidateRequestDto): Promise<ValidateTokenResponse> {
+    const decoded: User = await this.jwtService.verify(token);
+
+    if (!decoded) {
+      return {
+        status: HttpStatus.FORBIDDEN,
+        error: ['Token is invalid'],
+        userId: null,
+      };
+    }
+
+    const auth: User = await this.validateUser(decoded);
+
+    if (!auth) {
+      return {
+        status: HttpStatus.CONFLICT,
+        error: ['User not found'],
+        userId: null,
+      };
+    }
+
+    return { status: HttpStatus.OK, error: null, userId: decoded.id };
+  }
+  private async validateUser(decoded: User): Promise<User> {
+    const user = await this.userModel.findOneBy({ id: decoded.id });
+
+    if (!user.estado) {
+      throw new UnauthorizedException(`User is inactive, talk with an admin`);
+    }
+    return user;
   }
 }

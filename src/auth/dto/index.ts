@@ -1,4 +1,5 @@
 import { IsEmail, IsNotEmpty, IsString, IsOptional } from 'class-validator';
+import { ValidateTokenRequest } from '../auth.pb';
 
 export class LoginRequestDto {
   @IsEmail()
@@ -48,4 +49,8 @@ export class RefreshTokenRequestDto {
   @IsString()
   @IsNotEmpty()
   refreshToken: string;
+}
+export class ValidateRequestDto implements ValidateTokenRequest {
+  @IsString()
+  public readonly token: string;
 }

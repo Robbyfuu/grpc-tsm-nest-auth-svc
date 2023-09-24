@@ -12,6 +12,11 @@ export default () => ({
     username: process.env.DB_USERNAME,
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_DATABASE,
-    synchronize: true,
+    synchronize: false,
+  },
+  mailer: {
+    host: process.env.MAILER_HOST,
+    user: process.env.MAILER_USER,
+    password: process.env.MAILER_PASSWORD,
   },
 });

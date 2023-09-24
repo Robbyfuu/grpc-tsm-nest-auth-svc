@@ -4,6 +4,7 @@
   "sourceRoot": "src",
   "compilerOptions": {
     "deleteOutDir": true,
-    "assets": ["common/env/*"]
+    "assets": ["common/env/*", "shared/mailer/templates/**/*"],
+    "watchAssets": true
   }
 }

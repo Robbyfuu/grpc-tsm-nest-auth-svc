@@ -8,7 +8,9 @@ export class TypeOrmConfigService implements TypeOrmOptionsFactory {
 
   public createTypeOrmOptions(): TypeOrmModuleOptions {
     const dbType = this.config.get<string | undefined>('db.type');
-
+    const dbHost = this.config.get<string | undefined>('db.host');
+    const dbPort = this.config.get<number | undefined>('db.port');
+    console.log({ dbHost, dbPort });
     if (dbType === 'postgres') {
       return {
         type: 'postgres',
@@ -38,6 +40,12 @@ export class TypeOrmConfigService implements TypeOrmOptionsFactory {
         autoLoadEntities: true,
         logger: 'file',
         synchronize: this.config.get<boolean>('db.synchronize'), // never use TRUE in production!
+        ssl: true,
+        extra: {
+          ssl: {
+            rejectUnauthorized: false,
+          },
+        },
       };
     }
   }

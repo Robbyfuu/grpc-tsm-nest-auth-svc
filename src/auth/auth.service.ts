@@ -7,16 +7,21 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
+import { MailerService } from '@nestjs-modules/mailer';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './entities/user.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { TokenExpiredError, JwtPayload } from 'jsonwebtoken';
-import { LoginRequestDto, RegisterRequestDto, ValidateRequestDto } from './dto';
+import { LoginRequestDto, ValidateRequestDto } from './dto';
 import {
+  ForgotPasswordRequest,
+  ForgotPasswordResponse,
   LoginResponse,
   RefreshTokenResponse,
   RegisterResponse,
+  ResetPasswordRequest,
+  ResetPasswordResponse,
   ValidateTokenResponse,
 } from './auth.pb';
 
@@ -29,6 +34,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     @InjectRepository(RefreshToken)
     private readonly refreshTokenModel: Repository<RefreshToken>,
+    private readonly mailerService: MailerService,
   ) {}
 
   async validateUserWithPassword(email: string, pass: string): Promise<User> {
@@ -148,7 +154,6 @@ export class AuthService {
     password: string,
     role?: string,
   ): Promise<RegisterResponse> {
-    console.log({ email, password, role, nombre });
     const user = await this.userModel.findOne({ where: { email } });
     if (user) {
       // error user already exists
@@ -171,11 +176,21 @@ export class AuthService {
         newUser,
         12 * 60 * 60 * 1000,
       );
-      console.log({ newUser });
+
       return {
         ok: true,
         status: HttpStatus.CREATED,
-        usuario: newUser,
+        usuario: {
+          ...newUser,
+          createdAt: {
+            seconds: newUser.createdAt.getTime() / 1000,
+            nanos: (newUser.createdAt.getTime() % 1000) * 1e6,
+          },
+          updatedAt: {
+            seconds: newUser.updatedAt.getTime() / 1000,
+            nanos: (newUser.updatedAt.getTime() % 1000) * 1e6,
+          },
+        },
         token,
         refreshToken,
       };
@@ -189,7 +204,6 @@ export class AuthService {
     }
   }
   async login(loginInput: LoginRequestDto): Promise<LoginResponse> {
-    console.log({ loginInput });
     const { email, password } = loginInput;
     const user = await this.userModel.findOne({ where: { email } });
     if (!user) {
@@ -209,7 +223,17 @@ export class AuthService {
     return {
       ok: true,
       status: HttpStatus.OK,
-      usuario: user,
+      usuario: {
+        ...user,
+        createdAt: {
+          seconds: user.createdAt.getTime() / 1000,
+          nanos: (user.createdAt.getTime() % 1000) * 1e6,
+        },
+        updatedAt: {
+          seconds: user.updatedAt.getTime() / 1000,
+          nanos: (user.updatedAt.getTime() % 1000) * 1e6,
+        },
+      },
       token: await this.generateAccessToken(user),
       refreshToken: await this.generateRefreshToken(user, 12 * 60 * 60 * 1000),
     };
@@ -224,13 +248,13 @@ export class AuthService {
   async validateToken({
     token,
   }: ValidateRequestDto): Promise<ValidateTokenResponse> {
-    const decoded: User = await this.jwtService.verify(token);
+    const decoded = await this.jwtService.verify(token);
 
     if (!decoded) {
       return {
         status: HttpStatus.FORBIDDEN,
         error: ['Token is invalid'],
-        userId: null,
+        user: null,
       };
     }
 
@@ -240,18 +264,150 @@ export class AuthService {
       return {
         status: HttpStatus.CONFLICT,
         error: ['User not found'],
-        userId: null,
+        user: null,
       };
     }
 
-    return { status: HttpStatus.OK, error: null, userId: decoded.id };
+    return {
+      status: HttpStatus.OK,
+      error: null,
+      user: {
+        ...auth,
+        createdAt: {
+          seconds: auth.createdAt.getTime() / 1000,
+          nanos: (auth.createdAt.getTime() % 1000) * 1e6,
+        },
+        updatedAt: {
+          seconds: auth.updatedAt.getTime() / 1000,
+          nanos: (auth.updatedAt.getTime() % 1000) * 1e6,
+        },
+      },
+    };
   }
-  private async validateUser(decoded: User): Promise<User> {
-    const user = await this.userModel.findOneBy({ id: decoded.id });
+  private async validateUser(decoded: any): Promise<User> {
+    const user = await this.userModel.findOneBy({ id: decoded.sub });
 
     if (!user.estado) {
       throw new UnauthorizedException(`User is inactive, talk with an admin`);
     }
     return user;
+  }
+  async resetPassword(
+    payload: ResetPasswordRequest,
+  ): Promise<ResetPasswordResponse> {
+    const { token, password } = payload;
+    const decoded = await this.jwtService.verify(token);
+    const user = await this.validateUser(decoded);
+    if (!user) {
+      return {
+        ok: false,
+        status: HttpStatus.CONFLICT,
+        msg: 'User not found',
+        usuario: null,
+      };
+    }
+    user.password = bcrypt.hashSync(password, 10);
+    await this.userModel.save(user);
+    return {
+      ok: true,
+      status: HttpStatus.OK,
+      msg: 'Password changed',
+      usuario: {
+        ...user,
+        createdAt: {
+          seconds: user.createdAt.getTime() / 1000,
+          nanos: (user.createdAt.getTime() % 1000) * 1e6,
+        },
+        updatedAt: {
+          seconds: user.updatedAt.getTime() / 1000,
+          nanos: (user.updatedAt.getTime() % 1000) * 1e6,
+        },
+      },
+    };
+  }
+  async forgotPassword(
+    payload: ForgotPasswordRequest,
+  ): Promise<ForgotPasswordResponse> {
+    const { email } = payload;
+    const user = await this.userModel.findOne({ where: { email } });
+    if (!user) {
+      return {
+        ok: false,
+        status: HttpStatus.CONFLICT,
+        msg: 'User not found',
+        usuario: null,
+      };
+    }
+    const token = await this.generateAccessToken(user);
+    const url = `https://tsm-admin.cl/reset-password?${token}`;
+
+    return await this.mailerService
+      .sendMail({
+        to: email,
+        subject: 'Recuperar contraseña',
+        template: './resetpass',
+        context: {
+          url,
+        },
+        attachments: [
+          {
+            filename: 'image-1.png',
+            path: './src/shared/mailer/templates/images/image-1.png',
+            cid: 'imagen-1',
+          },
+          {
+            filename: 'image-2.png',
+            path: './src/shared/mailer/templates/images/image-2.png',
+            cid: 'image-2',
+          },
+          {
+            filename: 'image-3.png',
+            path: './src/shared/mailer/templates/images/image-3.png',
+            cid: 'image-3',
+          },
+          {
+            filename: 'image-4.png',
+            path: './src/shared/mailer/templates/images/image-4.png',
+            cid: 'image-4',
+          },
+          {
+            filename: 'image-5.png',
+            path: './src/shared/mailer/templates/images/image-5.png',
+            cid: 'image-5',
+          },
+          {
+            filename: 'logoTSM1.png',
+            path: './src/shared/mailer/templates/images/logoTSM1.png',
+            cid: 'logoTSM1',
+          },
+        ],
+      })
+      .then((res) => {
+        return {
+          ok: true,
+          status: HttpStatus.OK,
+          msg: 'Email sent',
+          usuario: {
+            ...user,
+            createdAt: {
+              seconds: user.createdAt.getTime() / 1000,
+              nanos: (user.createdAt.getTime() % 1000) * 1e6,
+            },
+            updatedAt: {
+              seconds: user.updatedAt.getTime() / 1000,
+              nanos: (user.updatedAt.getTime() % 1000) * 1e6,
+            },
+          },
+        };
+      })
+      .catch((error) => {
+        this.logger.error(error);
+        return {
+          ok: false,
+          status: HttpStatus.INTERNAL_SERVER_ERROR,
+          msg: error,
+          usuario: null,
+        };
+      });
   }
 }

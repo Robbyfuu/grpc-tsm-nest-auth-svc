@@ -1,6 +1,7 @@
 /* eslint-disable */
 import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
 import { Observable } from "rxjs";
+import { Timestamp } from "./google/protobuf/timestamp.pb";
 
 export const protobufPackage = "auth";
 
@@ -11,8 +12,8 @@ export interface User {
   estado: boolean;
   password: string;
   role: string;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: Date | Timestamp | undefined;
+  updatedAt: Timestamp | Date | undefined;
 }
 
 export interface LoginRequest {
@@ -87,7 +88,7 @@ export interface ValidateTokenRequest {
 export interface ValidateTokenResponse {
   status: number;
   error: string[];
-  userId: number;
+  user: User | undefined;
 }
 
 export const AUTH_PACKAGE_NAME = "auth";

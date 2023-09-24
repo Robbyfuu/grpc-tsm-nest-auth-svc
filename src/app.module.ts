@@ -7,6 +7,8 @@ import { ConfigModule } from '@nestjs/config';
 import configuration from './config/configuration';
 import { TypeOrmConfigService } from './shared/typeorm/typeorm.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { MailerModule } from '@nestjs-modules/mailer';
+import { MailerConfigService } from './shared/mailer/mailer.service';
 
 const envFilePath: string = getEnvPath(`${__dirname}/common/env`);
 
@@ -20,7 +22,11 @@ const envFilePath: string = getEnvPath(`${__dirname}/common/env`);
     TypeOrmModule.forRootAsync({
       useClass: TypeOrmConfigService,
     }),
+    MailerModule.forRootAsync({
+      useClass: MailerConfigService,
+    }),
     AuthModule,
+    MailerModule,
   ],
   controllers: [AppController],
   providers: [AppService, TypeOrmConfigService],
